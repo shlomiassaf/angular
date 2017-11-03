@@ -139,9 +139,9 @@ export function exitCodeFromResult(diags: Diagnostics | undefined): number {
   return diags.some(d => d.source === 'angular' && d.code === api.UNKNOWN_ERROR_CODE) ? 2 : 1;
 }
 
+
 export function performCompilation({rootNames, options, host, oldProgram, emitCallback,
-                                    gatherDiagnostics = defaultGatherDiagnostics,
-                                    customTransformers, emitFlags = api.EmitFlags.Default}: {
+                                     gatherDiagnostics, customTransformers, emitFlags}: {
   rootNames: string[],
   options: api.CompilerOptions,
   host?: api.CompilerHost,
@@ -151,16 +151,54 @@ export function performCompilation({rootNames, options, host, oldProgram, emitCa
   customTransformers?: api.CustomTransformers,
   emitFlags?: api.EmitFlags
 }): PerformCompilationResult {
-  let program: api.Program|undefined;
+  const program = createProgram({rootNames, host, options, oldProgram});
+  return _performCompilation({options, program, emitCallback,
+    gatherDiagnostics, customTransformers, emitFlags})
+}
+
+export function performCompilationAsync({rootNames, options, host, oldProgram, emitCallback,
+                                          gatherDiagnostics, customTransformers, emitFlags}: {
+  rootNames: string[],
+  options: api.CompilerOptions,
+  host?: api.CompilerHost,
+  oldProgram?: api.Program,
+  emitCallback?: api.TsEmitCallback,
+  gatherDiagnostics?: (program: api.Program) => Diagnostics,
+  customTransformers?: api.CustomTransformers,
+  emitFlags?: api.EmitFlags
+}): Promise<PerformCompilationResult> {
+  const program = createProgram({rootNames, host, options, oldProgram});
+  return program.loadNgStructureAsync()
+    .then( () => {
+      return _performCompilation({options, program, emitCallback,
+        gatherDiagnostics, customTransformers, emitFlags})
+    });
+}
+
+function createProgram({rootNames, options, host, oldProgram}: {
+  rootNames: string[],
+  options: api.CompilerOptions,
+  host: api.CompilerHost,
+  oldProgram?: api.Program
+}): api.Program {
+  host = host || ng.createCompilerHost({options});
+  return ng.createProgram({rootNames, host, options, oldProgram});
+}
+
+
+function _performCompilation({options, program, emitCallback,
+                               gatherDiagnostics = defaultGatherDiagnostics,
+                               customTransformers, emitFlags = api.EmitFlags.Default}: {
+  options: api.CompilerOptions,
+  program: api.Program,
+  emitCallback?: api.TsEmitCallback,
+  gatherDiagnostics?: (program: api.Program) => Diagnostics,
+  customTransformers?: api.CustomTransformers,
+  emitFlags?: api.EmitFlags
+}): PerformCompilationResult {
   let emitResult: ts.EmitResult|undefined;
   let allDiagnostics: Diagnostics = [];
   try {
-    if (!host) {
-      host = ng.createCompilerHost({options});
-    }
-
-    program = ng.createProgram({rootNames, host, options, oldProgram});
-
     const beforeDiags = Date.now();
     allDiagnostics.push(...gatherDiagnostics(program !));
     if (options.diagnostics) {
